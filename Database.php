@@ -1,50 +1,6 @@
 <?php
 
 /**
- * Helper functions.
- */
-
-function db_query($sql, $vars = FALSE) {
-  global $db;
-  return $db->query($sql, $vars);
-}
-
-function db_rows($sql, $vars = FALSE) {
-  global $db;
-  return $db->getAll($sql, $vars);
-}
-
-function db_row($sql, $vars = FALSE) {
-  global $db;
-  return $db->getRow($sql, $vars);
-}
-
-function db_col($sql, $vars = FALSE) {
-  global $db;
-  return $db->getCol($sql, $vars);
-}
-
-function db_list($sql, $vars = FALSE, $join = FALSE) {
-  global $db;
-  return $db->getList($sql, $vars, $join);
-}
-
-function db_one($sql, $vars = FALSE) {
-  global $db;
-  return $db->getOne($sql, $vars);
-}
-
-function db_quote($value, $encapsulate = FALSE) {
-  global $db;
-  return $db->quote($value, $encapsulate);
-}
-
-function db_save($table, &$data, $where = NULL, $primaryKey = NULL) {
-  global $db;
-  return $db->save($table, $data, $where, $primaryKey);
-}
-
-/**
  * Database class
  * 
  * A simple database wrapper, inspired by ADOdb.
@@ -449,4 +405,48 @@ class Database {
     return $this->cache('getList', $sql, $vars, $filename, $expires);
   }
 
+}
+
+/**
+ * Helper functions.
+ */
+
+function db_query($sql, $vars = FALSE) {
+  global $db;
+  return $db->query($sql, $vars);
+}
+
+function db_rows($sql, $vars = FALSE) {
+  global $db;
+  return $db->getAll($sql, $vars);
+}
+
+function db_row($sql, $vars = FALSE) {
+  global $db;
+  return $db->getRow($sql, $vars);
+}
+
+function db_col($sql, $vars = FALSE) {
+  global $db;
+  return $db->getCol($sql, $vars);
+}
+
+function db_list($sql, $vars = FALSE, $join = FALSE) {
+  global $db;
+  return $db->getList($sql, $vars, $join);
+}
+
+function db_one($sql, $vars = FALSE) {
+  global $db;
+  return $db->getOne($sql, $vars);
+}
+
+function db_quote($value, $encapsulate = FALSE) {
+  global $db;
+  return $db->quote($value, $encapsulate);
+}
+
+function db_save($table, &$data, $where = NULL, $primaryKey = NULL) {
+  global $db;
+  return $db->save($table, $data, $where, $primaryKey);
 }
