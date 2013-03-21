@@ -450,3 +450,8 @@ function db_save($table, &$data, $where = NULL, $primaryKey = NULL) {
   global $db;
   return $db->save($table, $data, $where, $primaryKey);
 }
+
+function db_enum($table, $field) {
+  global $db;
+  return $db->enum($table, $field);
+}
