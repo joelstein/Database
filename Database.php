@@ -193,7 +193,7 @@ class Database {
     // If successful and inserting new record and $data's $primaryKey is not
     // set, set $data's $primaryKey.
     if ($success && !$updating && empty($data[$primaryKey])) {
-      $data[$primaryKey] = mysql_insert_id();
+      $data[$primaryKey] = mysql_insert_id($this->db);
     }
 
     return $success;
