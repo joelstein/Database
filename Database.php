@@ -46,7 +46,7 @@ class Database {
    */
   public function connect() {
     $host = $this->port === NULL ? $this->host : "{$this->host}:{$this->port}";
-    $this->db = mysql_connect($host, $this->username, $this->password) or trigger_error("Could not connect to '{$host}'", E_USER_ERROR);
+    $this->db = mysql_connect($host, $this->username, $this->password, TRUE) or trigger_error("Could not connect to '{$host}'", E_USER_ERROR);
     mysql_select_db($this->database, $this->db) or trigger_error('Could not select database: ' . mysql_error($this->db), E_USER_ERROR);
   }
 
