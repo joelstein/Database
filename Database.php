@@ -134,28 +134,43 @@ class Database {
    * correspond to the $table's field names
    * @param string $where Conditions used when updating; defaults to
    * "id = $data[$primaryKey]" (quoted)
-   * @param string $primaryKey Defaults to whatever is flagged as primary key
-   * in table.
+   * @param array $$primaryKeys Defaults to primary keys in table.
    * @return boolean Whether or not the save was successful
    **/
-  public function save($table, &$data, $where = NULL, $primaryKey = NULL) {
+  public function save($table, &$data, $where = NULL, $primaryKeys = array()) {
     // Get column info about table.
     // @todo Cache this in static variable.
     $columns = $this->getAll("SHOW COLUMNS FROM `{$table}`");
 
-    // Auto-determine primary key (if not provided).
-    if ($primaryKey === NULL) {
+    // Auto-determine primary keys (if not provided).
+    if (empty($primaryKeys)) {
       foreach ($columns as $column) {
         if ($column['Key'] == 'PRI') {
-          $primaryKey = $column['Field'];
+          $primaryKeys[] = $column['Field'];
         }
       }
     }
 
     // Determine if inserting or updating.
-    $updating = FALSE;
-    if (isset($data[$primaryKey]) && !empty($data[$primaryKey]) && $this->getOne("SELECT COUNT(*) FROM `{$table}` WHERE `{$primaryKey}` = ?", $data[$primaryKey])) {
-      $updating = TRUE;
+    $updating = TRUE;
+    $conditions = array();
+
+    // If any primary key is not set or is empty, then we're inserting.
+    foreach ($primaryKeys as $primaryKey) {
+      if (!isset($data[$primaryKey]) || empty($data[$primaryKey])) {
+        $updating = FALSE;
+        break;
+      }
+    }
+
+    // If all primary keys have values, check if row exists.
+    if ($updating) {
+      foreach ($primaryKeys as $primaryKey) {
+        $conditions[] = "`{$primaryKey}` = " . $this->quote($data[$primaryKey], TRUE);
+      }
+      if (!$this->getOne("SELECT COUNT(*) FROM `{$table}` WHERE " . implode(' AND ', $conditions))) {
+        $updating = FALSE;
+      }
     }
 
     // Prepare data based on table's columns.
@@ -166,7 +181,7 @@ class Database {
       if (array_key_exists($field, $data)) {
         // Updating.
         if ($updating) {
-          if ($field != $primaryKey) {
+          if (!in_array($field, $primaryKeys)) {
             $sqlData[] = "`{$field}` = " . $this->quote($data[$field], TRUE);
           }
         }
@@ -180,7 +195,12 @@ class Database {
 
     // Generate sql.
     if ($updating) {
-      $where = $where === NULL ? "`{$primaryKey}` = " . $this->quote($data[$primaryKey], TRUE) : $where;
+      if ($where === NULL) {
+        foreach ($primaryKeys as $primaryKey) {
+          $conditions[] = "`{$primaryKey}` = " . $this->quote($data[$primaryKey], TRUE);
+        }
+        $where = implode(' AND ', $conditions);
+      }
       $sql = sprintf("UPDATE `%s` SET %s WHERE %s LIMIT 1", $table, implode(', ', $sqlData), $where);
     }
     else {
@@ -190,9 +210,9 @@ class Database {
     // Execute sql.
     $success = $this->query($sql);
 
-    // If successful and inserting new record and $data's $primaryKey is not
-    // set, set $data's $primaryKey.
-    if ($success && !$updating && empty($data[$primaryKey])) {
+    // If successful, inserting new record, there is only one primary key, and
+    // $data's $primaryKey is not set, set $data's $primaryKey.
+    if ($success && !$updating && count($primaryKeys) == 1 && empty($data[$primaryKey])) {
       $data[$primaryKey] = mysql_insert_id($this->db);
     }
 
