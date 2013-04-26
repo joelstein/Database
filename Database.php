@@ -281,7 +281,7 @@ class Database {
    * @return array
    **/
   public function enum($table, $field) {
-    $info = $this->getRow("DESCRIBE {$table} {$field}");
+    $info = $this->getRow("DESCRIBE `{$table}` `{$field}`");
     return explode(',', preg_replace('/enum\(([^\)]+)\)/', '$1', str_replace("'", '', $info['Type'])));
   }
 
