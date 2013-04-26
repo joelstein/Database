@@ -66,7 +66,7 @@ class Database {
     if ($vars !== FALSE) {
       $sql = $this->prepare($sql, $vars);
     }
-    $results = mysql_query($sql, $this->db) or trigger_error('Query failed: ' . mysql_error($this->db), E_USER_WARNING);
+    $results = mysql_query($sql, $this->db) or trigger_error('Query failed: ' . mysql_error($this->db) . " (Query: $sql)", E_USER_WARNING);
     $this->queries[] = $sql;
     return $results;
   }
