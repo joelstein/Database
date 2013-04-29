@@ -99,12 +99,12 @@ class Database {
         if (is_array($vars[$i])) {
           $escaped = array();
           foreach ($vars[$i] as $var) {
-            $escaped[] = $this->escape($var, TRUE);
+            $escaped[] = $this->escape($var);
           }
           $escaped = '('. implode(',', $escaped) .')';
         }
         else {
-          $escaped = $this->escape($vars[$i], TRUE);
+          $escaped = $this->escape($vars[$i]);
         }
         $sql .= $sqlParts[$i] . $escaped;
       }
@@ -166,7 +166,7 @@ class Database {
     // If all primary keys have values, check if row exists.
     if ($updating) {
       foreach ($primaryKeys as $primaryKey) {
-        $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey], TRUE);
+        $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey]);
       }
       if (!$this->getOne("SELECT COUNT(*) FROM `{$table}` WHERE " . implode(' AND ', $conditions))) {
         $updating = FALSE;
@@ -182,13 +182,13 @@ class Database {
         // Updating.
         if ($updating) {
           if (!in_array($field, $primaryKeys)) {
-            $sqlData[] = "`{$field}` = " . $this->escape($data[$field], TRUE);
+            $sqlData[] = "`{$field}` = " . $this->escape($data[$field]);
           }
         }
         // Inserting.
         else {
           $sqlFields[] = "`{$field}`";
-          $sqlData[] = $this->escape($data[$field], TRUE);
+          $sqlData[] = $this->escape($data[$field]);
         }
       }
     }
@@ -197,7 +197,7 @@ class Database {
     if ($updating) {
       if ($where === NULL) {
         foreach ($primaryKeys as $primaryKey) {
-          $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey], TRUE);
+          $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey]);
         }
         $where = implode(' AND ', $conditions);
       }
@@ -229,7 +229,7 @@ class Database {
    * value will be encapsulated in single quotes.
    * @return string
    **/
-  public function escape($value, $quote = FALSE) {
+  public function escape($value, $quote = TRUE) {
     if ($this->db === NULL) {
       $this->connect();
     }
@@ -416,7 +416,7 @@ function db_one($sql, $vars = FALSE) {
   return $db->getOne($sql, $vars);
 }
 
-function db_escape($value, $quote = FALSE) {
+function db_escape($value, $quote = TRUE) {
   global $db;
   return $db->escape($value, $quote);
 }
