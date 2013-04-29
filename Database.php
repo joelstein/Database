@@ -58,7 +58,7 @@ class Database {
    * Executes query.
    * 
    * @param string $query The query string.
-   * @param mixed $vars Values to quote and substitute into $query.
+   * @param mixed $vars Values to inject into $query.
    * 
    * @return mixed Result set for some queries (SELECT, etc.), TRUE/FALSE for
    * others (INSERT, UPDATE, etc.)
@@ -69,7 +69,7 @@ class Database {
       $this->connect();
     }
     // Inject query vars.
-    $query = $this->prepare($query, $vars);
+    $query = $this->replace($query, $vars);
     // Execute query.
     $results = mysql_query($query, $this->db) or trigger_error('Query failed: ' . mysql_error($this->db) . " (Query: $query)", E_USER_WARNING);
     // Log the query.
@@ -78,21 +78,39 @@ class Database {
   }
 
   /**
-   * Safely injects query substitutions.
+   * Safely injects query replacements.
+   * 
+   * Query replacements can be named:
    * 
    * <code>
-   * $query1 = $db->prepare("SELECT * FROM table WHERE id = ?", 13);
-   * $query2 = $db->prepare("SELECT * FROM table WHERE id = ? AND name = ?", array(13, 'John'));
-   * $query3 = $db->prepare("SELECT * FROM table WHERE id IN ? AND name = ?", array(array(1,2,3), 'John'));
+   * $query1 = $db->replace("SELECT * FROM users WHERE id = :id", array(':id' => 13));
+   * $query2 = $db->replace("SELECT * FROM users WHERE name = :name AND type IN :type", array(
+   *   ':name' => 'John',
+   *   ':type' => array('active', 'blocked'),
+   * ));
    * </code>
    * 
-   * @param string $query The query string with question marks in place of values
-   * @param string|array $vars Values to quote and substitute into $query; if
-   * $vars is an array and contains and array, the "IN" syntax will be used
+   * Or, they can be sequential question marks:
    * 
-   * @return string Query with injected substitutions.
+   * <code>
+   * $query1 = $db->replace("SELECT * FROM table WHERE id = ?", 13);
+   * $query2 = $db->replace("SELECT * FROM table WHERE name = ? AND type IN ?", array(
+   *   'John',
+   *   array('active', 'blocked'),
+   * ));
+   * </code>
+   * 
+   * @param string $query The query string.
+   * @param mixed $vars Values to escape and inject into $query.
+   * 
+   * @return string Query with injected replacements.
    **/
-  public function prepare($query, $vars = array()) {
+  public function replace($query, $vars = array()) {
+    // Named substitutions.
+    if (strpos($query, ':')) {
+      $query = strtr($query, array_map(array($this, 'escape'), $vars));
+    }
+    // Sequential question-mark substitutions.
     if (strpos($query, '?')) {
       $queryParts = explode('?', $query);
       settype($vars, 'array');
