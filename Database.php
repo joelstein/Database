@@ -7,6 +7,9 @@
  */
 class Database {
 
+  /**
+   * Database connection credentials.
+   */
   private $host;
   private $username;
   private $password;
@@ -14,24 +17,25 @@ class Database {
   private $port;
 
   /**
-   * MySQL link identifier of open database connection
-   * @var Resource
+   * MySQL link identifier of open database connection.
+   * @var Resource.
    */
   private $db = NULL;
 
   /**
-   * Contains SQL of all queries run in this script.
+   * Log of all executed queries.
    * @var array
    */
   public $queries = array();
 
   /**
-   * Class constructor, which stores database's credentials.
+   * Class constructor, which stores connection credentials.
    * 
    * @param string $host
    * @param string $username
    * @param string $password
    * @param string $database
+   * @param int $port
    **/
   public function __construct($host, $username, $password, $database, $port = NULL) {
     $this->host = $host;
@@ -46,95 +50,101 @@ class Database {
    */
   public function connect() {
     $host = $this->port === NULL ? $this->host : "{$this->host}:{$this->port}";
-    $this->db = mysql_connect($host, $this->username, $this->password, TRUE) or trigger_error("Could not connect to '{$host}'", E_USER_ERROR);
+    $this->db = mysql_connect($host, $this->username, $this->password, TRUE) or trigger_error("Could not connect to '{$host}'.", E_USER_ERROR);
     mysql_select_db($this->database, $this->db) or trigger_error('Could not select database: ' . mysql_error($this->db), E_USER_ERROR);
   }
 
   /**
-   * Prepares and executes MySQL query, connecting to the database on the first
-   * query.
+   * Executes query.
    * 
-   * @param string $sql SQL to execute
-   * @param string|array|boolean $vars Values to escape and substitute into SQL
-   * @return Resource|boolean Result set for some queries (SELECT, etc.),
-   * TRUE/FALSE for others (INSERT, UPDATE, etc.)
+   * @param string $query The query string.
+   * @param mixed $vars Values to quote and substitute into $query.
+   * 
+   * @return mixed Result set for some queries (SELECT, etc.), TRUE/FALSE for
+   * others (INSERT, UPDATE, etc.)
    **/
-  public function &query($sql, $vars = FALSE) {
+  public function &query($query, $vars = array()) {
+    // Connect if not already connected.
     if ($this->db === NULL) {
       $this->connect();
     }
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    $results = mysql_query($sql, $this->db) or trigger_error('Query failed: ' . mysql_error($this->db) . " (Query: $sql)", E_USER_WARNING);
-    $this->queries[] = $sql;
+    // Inject query vars.
+    $query = $this->prepare($query, $vars);
+    // Execute query.
+    $results = mysql_query($query, $this->db) or trigger_error('Query failed: ' . mysql_error($this->db) . " (Query: $query)", E_USER_WARNING);
+    // Log the query.
+    $this->queries[] = $query;
     return $results;
   }
 
   /**
-   * Prepares SQL by replacing question marks with escaped variable
-   * substitutions.
+   * Safely injects query substitutions.
    * 
    * <code>
-   * $sql1 = $db->prepare("SELECT * FROM table WHERE id = ?", 13);
-   * $sql2 = $db->prepare("SELECT * FROM table WHERE id = ? AND name = ?", array(13, 'John'));
-   * $sql3 = $db->prepare("SELECT * FROM table WHERE id IN ? AND name = ?", array(array(1,2,3), 'John'));
+   * $query1 = $db->prepare("SELECT * FROM table WHERE id = ?", 13);
+   * $query2 = $db->prepare("SELECT * FROM table WHERE id = ? AND name = ?", array(13, 'John'));
+   * $query3 = $db->prepare("SELECT * FROM table WHERE id IN ? AND name = ?", array(array(1,2,3), 'John'));
    * </code>
    * 
-   * @param string $sql SQL with question marks in place of values
-   * @param string|array $vars Values to escape and substitute into SQL; if
+   * @param string $query The query string with question marks in place of values
+   * @param string|array $vars Values to quote and substitute into $query; if
    * $vars is an array and contains and array, the "IN" syntax will be used
-   * @return string Substituted and escaped SQL
+   * 
+   * @return string Query with injected substitutions.
    **/
-  public function prepare($sql, $vars) {
-    if (strpos($sql, '?')) {
-      $sqlParts = explode('?', $sql);
+  public function prepare($query, $vars = array()) {
+    if (strpos($query, '?')) {
+      $queryParts = explode('?', $query);
       settype($vars, 'array');
-      if (count($sqlParts) != count($vars) + 1) {
-        $array = !empty($vars) ? 'Input $vars array of '. print_r($vars, 1) : 'Empty $vars array';
-        trigger_error("{$array} does not match ? in sql '{$sql}'", E_USER_ERROR);
+      if (count($queryParts) != count($vars) + 1) {
+        $array = !empty($vars) ? 'Input $vars array of ' . print_r($vars, 1) : 'Empty $vars array';
+        trigger_error("{$array} does not match number of ?'s in query '{$query}'", E_USER_ERROR);
       }
-      $sql = '';
+      $query = '';
       for ($i = 0; $i < count($vars); $i++) {
-        $sql .= $sqlParts[$i] . $this->escape($vars[$i]);
+        $query .= $queryParts[$i] . $this->escape($vars[$i]);
       }
-      $sql .= $sqlParts[$i];
+      $query .= $queryParts[$i];
     }
-    return $sql;
+    return $query;
   }
 
   /**
    * Saves $data to a $table record, either inserting or updating.
    * 
-   * This function helps avoid long SQL queries for a basic task - saving a
-   * record to the database. It follows several conventions:
+   * This function helps avoid writing long queries for a common task - saving
+   * a record to the database. It follows several conventions:
    * 
-   * - If $primaryKey exists and is not empty in $data, and exists in $table,
-   *   then update the record. Otherwise, insert the record.
-   * - Only those $data keys which correspond to actual field names in $table
+   * - If each $primaryKeys exists and is not empty in $data, and exists in
+   *   $table, then it updates the record. Otherwise, it inserts the record.
+   * - Only those $data keys which correspond to actual column names in $table
    *   will be saved.
-   * - Any of $table's fields which are not in $data will remain untouched in
+   * - Any of $table's columns which are not in $data will remain untouched in
    *   the database record.
    * 
-   * As a convenience, when a record is inserted, $data[$primaryKey] will be
-   * populated with the record's id.
+   * As a convenience, when a record is inserted, each of the table's primary
+   * keys will be populated into the corresponding $data[$primaryKey].
    * 
-   * @param string $table Table in which to save record
+   * @param string $table Table in which to save record.
    * @param array &$data Associated array (by reference) in which the keys
-   * correspond to the $table's field names
+   * correspond to the $table's column names.
    * @param string $where Conditions used when updating; defaults to
-   * "id = $data[$primaryKey]" (escaped)
-   * @param array $$primaryKeys Defaults to primary keys in table.
-   * @return boolean Whether or not the save was successful
+   * "id = $data[$primaryKey]" (for each primary key).
+   * @param array $primaryKeys Defaults to primary keys in table.
+   * 
+   * @return boolean TRUE if save was successful, FALSE otherwise.
    **/
   public function save($table, &$data, $where = NULL, $primaryKeys = array()) {
+    static $columns = array();
+
     // Get column info about table.
-    // @todo Cache this in static variable.
-    $columns = $this->getAll("SHOW COLUMNS FROM `{$table}`");
+    if (!isset($columns[$table])) {
+      $columns[$table] = $this->getAll("SHOW COLUMNS FROM `{$table}`");
+    }
 
     // Auto-determine primary keys (if not provided).
     if (empty($primaryKeys)) {
-      foreach ($columns as $column) {
+      foreach ($columns[$table] as $column) {
         if ($column['Key'] == 'PRI') {
           $primaryKeys[] = $column['Field'];
         }
@@ -164,26 +174,26 @@ class Database {
     }
 
     // Prepare data based on table's columns.
-    $sqlData = $sqlFields = array();
-    foreach ($columns as $column) {
+    $queryData = $queryFields = array();
+    foreach ($columns[$table] as $column) {
       $field = $column['Field'];
       // If column exists in data.
       if (array_key_exists($field, $data)) {
         // Updating.
         if ($updating) {
           if (!in_array($field, $primaryKeys)) {
-            $sqlData[] = "`{$field}` = " . $this->escape($data[$field]);
+            $queryData[] = "`{$field}` = " . $this->escape($data[$field]);
           }
         }
         // Inserting.
         else {
-          $sqlFields[] = "`{$field}`";
-          $sqlData[] = $this->escape($data[$field]);
+          $queryFields[] = "`{$field}`";
+          $queryData[] = $this->escape($data[$field]);
         }
       }
     }
 
-    // Generate sql.
+    // Build query.
     if ($updating) {
       if ($where === NULL) {
         foreach ($primaryKeys as $primaryKey) {
@@ -191,17 +201,17 @@ class Database {
         }
         $where = implode(' AND ', $conditions);
       }
-      $sql = sprintf("UPDATE `%s` SET %s WHERE %s LIMIT 1", $table, implode(', ', $sqlData), $where);
+      $query = sprintf("UPDATE `%s` SET %s WHERE %s LIMIT 1", $table, implode(', ', $queryData), $where);
     }
     else {
-      $sql = sprintf("INSERT INTO `%s` (%s) VALUES (%s)", $table, implode(', ', $sqlFields), implode(', ', $sqlData));
+      $query = sprintf("INSERT INTO `%s` (%s) VALUES (%s)", $table, implode(', ', $queryFields), implode(', ', $queryData));
     }
 
-    // Execute sql.
-    $success = $this->query($sql);
+    // Execute query.
+    $success = $this->query($query);
 
-    // If successful, inserting new record, there is only one primary key, and
-    // $data's $primaryKey is not set, set $data's $primaryKey.
+    // If successful, inserting a new record, there is only one primary key,
+    // and $data's $primaryKey is not set, then set $data's $primaryKey.
     if ($success && !$updating && count($primaryKeys) == 1 && empty($data[$primaryKey])) {
       $data[$primaryKey] = mysql_insert_id($this->db);
     }
@@ -213,10 +223,10 @@ class Database {
    * Escapes a value to be injected into a query.
    * 
    * @param mixed $value Value to escape.
-   * @param boolean $quote If TRUE, and if $value is a string, the escaped
-   * value will be encapsulated in single quotes.
+   * @param boolean $quote Unless FALSE, if $value is a string, the escaped
+   * value will be encapsulated in this value, or single quotes if TRUE.
    * 
-   * @return string The escaped (and optionally quoted) value.
+   * @return string The escaped value.
    **/
   public function escape($value, $quote = TRUE) {
     // Connect if not already connected.
@@ -241,36 +251,36 @@ class Database {
     }
     // String values are escaped, and optionally wrapped in quotes.
     $value = mysql_real_escape_string($value, $this->db);
-    if ($quote) {
-      $value = "'" . $value . "'";
+    if ($quote !== FALSE) {
+      $separator = TRUE ? "'" : $quote;
+      $value = $separator . $value . $separator;
     }
     return $value;
   }
 
   /**
-   * Returns $field's enum options into an array.
+   * Gets $column's enum options.
    * 
-   * @param string $table
-   * @param string $field
+   * @param string $table The table.
+   * @param string $column The table's column.
+   * 
    * @return array
    **/
-  public function enum($table, $field) {
-    $info = $this->getRow("DESCRIBE `{$table}` `{$field}`");
+  public function enum($table, $column) {
+    $info = $this->getRow("DESCRIBE `{$table}` `{$column}`");
     return explode(',', preg_replace('/enum\(([^\)]+)\)/', '$1', str_replace("'", '', $info['Type'])));
   }
 
   /**
    * Gets all query results.
    * 
-   * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to escape and substitute into SQL
-   * @return array Associative array
+   * @param string $query The query string.
+   * @param mixed $vars Values inject into $query.
+   * 
+   * @return array Associative array of results.
    */
-  public function getAll($sql, $vars = FALSE) {
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    $result =& $this->query($sql);
+  public function getAll($query, $vars = array()) {
+    $result =& $this->query($query, $vars);
     $rows = array();
     while ($row = mysql_fetch_array($result, MYSQL_ASSOC)) {
       $rows[] = $row;
@@ -281,41 +291,37 @@ class Database {
   /**
    * Gets first row of query results.
    * 
-   * "LIMIT 1" will be auto-appended to $sql, if not already included and $sql
-   * is not a DESCRIBE query.
+   * "LIMIT 1" will be auto-appended to $query, if not already included, and if
+   * not a DESCRIBE query.
    * 
-   * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to escape and substitute into SQL
-   * @return array Associative array
+   * @param string $query The query string.
+   * @param mixed $vars Values to inject into $query.
+   * 
+   * @return array Associative array of first row of results.
    */
-  public function getRow($sql, $vars = FALSE) {
-    if (!strpos($sql, 'LIMIT 1') and substr($sql, 0, 8) != 'DESCRIBE') {
-      $sql .= ' LIMIT 1';
+  public function getRow($query, $vars = array()) {
+    if (!strpos($query, 'LIMIT 1') && substr($query, 0, 8) != 'DESCRIBE') {
+      $query .= ' LIMIT 1';
     }
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    $result =& $this->query($sql);
+    $result =& $this->query($query, $vars);
     return mysql_fetch_array($result, MYSQL_ASSOC);
   }
 
   /**
    * Gets first column of first row of query results.
    * 
-   * "LIMIT 1" will be auto-appended to $sql, if not already included.
+   * "LIMIT 1" will be auto-appended to $query, if not already included.
    * 
-   * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to escape and substitute into SQL
-   * @return mixed
+   * @param string $query The query string.
+   * @param mixed $vars Values to inject into $query.
+   * 
+   * @return mixed The first column of the first row.
    */
-  public function getOne($sql, $vars = FALSE) {
-    if (!strpos($sql, 'LIMIT 1')) {
-      $sql .= ' LIMIT 1';
+  public function getOne($query, $vars = FALSE) {
+    if (!strpos($query, 'LIMIT 1')) {
+      $query .= ' LIMIT 1';
     }
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    $result =& $this->query($sql);
+    $result =& $this->query($query, $vars);
     $row = mysql_fetch_array($result, MYSQL_NUM);
     return $row[0];
   }
@@ -323,15 +329,13 @@ class Database {
   /**
    * Gets first column of all query results.
    * 
-   * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to escape and substitute into SQL
-   * @return array
+   * @param string $query The query string.
+   * @param mixed $vars Values to inject into $query.
+   * 
+   * @return array Array of first column of all rows.
    */
-  public function getCol($sql, $vars = FALSE) {
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    $result =& $this->query($sql);
+  public function getCol($query, $vars = FALSE) {
+    $result =& $this->query($query, $vars);
     $rows = array();
     while ($row = mysql_fetch_array($result, MYSQL_NUM)) {
       $rows[] = $row[0];
@@ -342,28 +346,25 @@ class Database {
   /**
    * Generates a key => value list from query results.
    * 
-   * This function will create an associative array where the first field is
-   * the key, and the second field is the value. If $join is TRUE, remaining
-   * fields will be an associative array. If it's a string, that string will
-   * be used to join all remaining fields.
+   * This function will create an associative array where the first column is
+   * the key, and the second column is the value.
    * 
    * <code>
    * $list1 = $db->getList("SELECT id, name FROM users WHERE id < ?", 10);
    * $list2 = $db->getList("SELECT id, first_name, last_name FROM users", FALSE, ' ');
-   * $list3 = $db->getList("SELECT id, first_name, last_name, email FROM users", FALSE, 'array');
+   * $list3 = $db->getList("SELECT id, first_name, last_name, email FROM users", FALSE, TRUE);
    * </code>
    * 
-   * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to escape and substitute into SQL.
-   * @param string|boolean $join String with which to join additional
-   * fields together.
-   * @return array
+   * @param string $query The query string.
+   * @param mixed $vars Values to inject into $query.
+   * @param mixed $join If TRUE, remaining columns will be an associative
+   * array. If a string, that string will be used to join all remaining
+   * columns.
+   * 
+   * @return array Array of key => values.
    */
-  public function getList($sql, $vars = FALSE, $join = FALSE) {
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    $results =& $this->query($sql);
+  public function getList($query, $vars = array(), $join = FALSE) {
+    $results =& $this->query($query, $vars);
     $list = array();
     if ($join === TRUE) {
       while ($row = mysql_fetch_array($results, MYSQL_ASSOC)) {
@@ -385,34 +386,34 @@ class Database {
  * Helper functions.
  */
 
-function db_query($sql, $vars = FALSE) {
+function db_query($query, $vars = array()) {
   global $db;
-  return $db->query($sql, $vars);
+  return $db->query($query, $vars);
 }
 
-function db_rows($sql, $vars = FALSE) {
+function db_rows($query, $vars = array()) {
   global $db;
-  return $db->getAll($sql, $vars);
+  return $db->getAll($query, $vars);
 }
 
-function db_row($sql, $vars = FALSE) {
+function db_row($query, $vars = array()) {
   global $db;
-  return $db->getRow($sql, $vars);
+  return $db->getRow($query, $vars);
 }
 
-function db_col($sql, $vars = FALSE) {
+function db_col($query, $vars = array()) {
   global $db;
-  return $db->getCol($sql, $vars);
+  return $db->getCol($query, $vars);
 }
 
-function db_list($sql, $vars = FALSE, $join = FALSE) {
+function db_list($query, $vars = array(), $join = FALSE) {
   global $db;
-  return $db->getList($sql, $vars, $join);
+  return $db->getList($query, $vars, $join);
 }
 
-function db_one($sql, $vars = FALSE) {
+function db_one($query, $vars = array()) {
   global $db;
-  return $db->getOne($sql, $vars);
+  return $db->getOne($query, $vars);
 }
 
 function db_escape($value, $quote = TRUE) {
@@ -425,7 +426,7 @@ function db_save($table, &$data, $where = NULL, $primaryKey = NULL) {
   return $db->save($table, $data, $where, $primaryKey);
 }
 
-function db_enum($table, $field) {
+function db_enum($table, $column) {
   global $db;
-  return $db->enum($table, $field);
+  return $db->enum($table, $column);
 }
