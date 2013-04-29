@@ -55,7 +55,7 @@ class Database {
    * query.
    * 
    * @param string $sql SQL to execute
-   * @param string|array|boolean $vars Values to quote and substitute into SQL
+   * @param string|array|boolean $vars Values to escape and substitute into SQL
    * @return Resource|boolean Result set for some queries (SELECT, etc.),
    * TRUE/FALSE for others (INSERT, UPDATE, etc.)
    **/
@@ -72,7 +72,7 @@ class Database {
   }
 
   /**
-   * Prepares SQL by replacing question marks with quoted variable
+   * Prepares SQL by replacing question marks with escaped variable
    * substitutions.
    * 
    * <code>
@@ -82,9 +82,9 @@ class Database {
    * </code>
    * 
    * @param string $sql SQL with question marks in place of values
-   * @param string|array $vars Values to quote and substitute into SQL; if
+   * @param string|array $vars Values to escape and substitute into SQL; if
    * $vars is an array and contains and array, the "IN" syntax will be used
-   * @return string Substituted and quoted SQL
+   * @return string Substituted and escaped SQL
    **/
   public function prepare($sql, $vars) {
     if (strpos($sql, '?')) {
@@ -97,16 +97,16 @@ class Database {
       $sql = '';
       for ($i = 0; $i < count($vars); $i++) {
         if (is_array($vars[$i])) {
-          $quoted = array();
+          $escaped = array();
           foreach ($vars[$i] as $var) {
-            $quoted[] = $this->quote($var, TRUE);
+            $escaped[] = $this->escape($var, TRUE);
           }
-          $quoted = '('. implode(',', $quoted) .')';
+          $escaped = '('. implode(',', $escaped) .')';
         }
         else {
-          $quoted = $this->quote($vars[$i], TRUE);
+          $escaped = $this->escape($vars[$i], TRUE);
         }
-        $sql .= $sqlParts[$i] . $quoted;
+        $sql .= $sqlParts[$i] . $escaped;
       }
       $sql .= $sqlParts[$i];
     }
@@ -133,7 +133,7 @@ class Database {
    * @param array &$data Associated array (by reference) in which the keys
    * correspond to the $table's field names
    * @param string $where Conditions used when updating; defaults to
-   * "id = $data[$primaryKey]" (quoted)
+   * "id = $data[$primaryKey]" (escaped)
    * @param array $$primaryKeys Defaults to primary keys in table.
    * @return boolean Whether or not the save was successful
    **/
@@ -166,7 +166,7 @@ class Database {
     // If all primary keys have values, check if row exists.
     if ($updating) {
       foreach ($primaryKeys as $primaryKey) {
-        $conditions[] = "`{$primaryKey}` = " . $this->quote($data[$primaryKey], TRUE);
+        $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey], TRUE);
       }
       if (!$this->getOne("SELECT COUNT(*) FROM `{$table}` WHERE " . implode(' AND ', $conditions))) {
         $updating = FALSE;
@@ -182,13 +182,13 @@ class Database {
         // Updating.
         if ($updating) {
           if (!in_array($field, $primaryKeys)) {
-            $sqlData[] = "`{$field}` = " . $this->quote($data[$field], TRUE);
+            $sqlData[] = "`{$field}` = " . $this->escape($data[$field], TRUE);
           }
         }
         // Inserting.
         else {
           $sqlFields[] = "`{$field}`";
-          $sqlData[] = $this->quote($data[$field], TRUE);
+          $sqlData[] = $this->escape($data[$field], TRUE);
         }
       }
     }
@@ -197,7 +197,7 @@ class Database {
     if ($updating) {
       if ($where === NULL) {
         foreach ($primaryKeys as $primaryKey) {
-          $conditions[] = "`{$primaryKey}` = " . $this->quote($data[$primaryKey], TRUE);
+          $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey], TRUE);
         }
         $where = implode(' AND ', $conditions);
       }
@@ -223,13 +223,13 @@ class Database {
    * Escapes a value to be used in a SQL query.
    * 
    * @param mixed $value Value to escape; booleans are returned as 1 or 0, NULL
-   * values are returned NULL; everything else is quoted using
+   * values are returned NULL; everything else is escaped using
    * mysql_real_escape_string()
-   * @param boolean $encapsulate Whether or not the value should be
-   * encapsulated in single-quotes (only applies to strings)
+   * @param boolean $quote If TRUE, and if $value is a string, the escaped
+   * value will be encapsulated in single quotes.
    * @return string
    **/
-  public function quote($value, $encapsulate = FALSE) {
+  public function escape($value, $quote = FALSE) {
     if ($this->db === NULL) {
       $this->connect();
     }
@@ -241,7 +241,7 @@ class Database {
     }
     else if (!is_numeric($value) and !is_array($value)) {
       $value = mysql_real_escape_string($value, $this->db);
-      if ($encapsulate) {
+      if ($quote) {
         $value = "'". $value ."'";
       }
     }
@@ -264,7 +264,7 @@ class Database {
    * Gets all query results.
    * 
    * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to quote and substitute into SQL
+   * @param string|array|boolean $vars Values to escape and substitute into SQL
    * @return array Associative array
    */
   public function getAll($sql, $vars = FALSE) {
@@ -286,7 +286,7 @@ class Database {
    * is not a DESCRIBE query.
    * 
    * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to quote and substitute into SQL
+   * @param string|array|boolean $vars Values to escape and substitute into SQL
    * @return array Associative array
    */
   public function getRow($sql, $vars = FALSE) {
@@ -306,7 +306,7 @@ class Database {
    * "LIMIT 1" will be auto-appended to $sql, if not already included.
    * 
    * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to quote and substitute into SQL
+   * @param string|array|boolean $vars Values to escape and substitute into SQL
    * @return mixed
    */
   public function getOne($sql, $vars = FALSE) {
@@ -325,7 +325,7 @@ class Database {
    * Gets first column of all query results.
    * 
    * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to quote and substitute into SQL
+   * @param string|array|boolean $vars Values to escape and substitute into SQL
    * @return array
    */
   public function getCol($sql, $vars = FALSE) {
@@ -355,7 +355,7 @@ class Database {
    * </code>
    * 
    * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to quote and substitute into SQL.
+   * @param string|array|boolean $vars Values to escape and substitute into SQL.
    * @param string|boolean $join String with which to join additional
    * fields together.
    * @return array
@@ -416,9 +416,9 @@ function db_one($sql, $vars = FALSE) {
   return $db->getOne($sql, $vars);
 }
 
-function db_quote($value, $encapsulate = FALSE) {
+function db_escape($value, $quote = FALSE) {
   global $db;
-  return $db->quote($value, $encapsulate);
+  return $db->escape($value, $quote);
 }
 
 function db_save($table, &$data, $where = NULL, $primaryKey = NULL) {
