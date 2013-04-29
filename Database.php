@@ -96,17 +96,7 @@ class Database {
       }
       $sql = '';
       for ($i = 0; $i < count($vars); $i++) {
-        if (is_array($vars[$i])) {
-          $escaped = array();
-          foreach ($vars[$i] as $var) {
-            $escaped[] = $this->escape($var);
-          }
-          $escaped = '('. implode(',', $escaped) .')';
-        }
-        else {
-          $escaped = $this->escape($vars[$i]);
-        }
-        $sql .= $sqlParts[$i] . $escaped;
+        $sql .= $sqlParts[$i] . $this->escape($vars[$i]);
       }
       $sql .= $sqlParts[$i];
     }
@@ -220,30 +210,39 @@ class Database {
   }
 
   /**
-   * Escapes a value to be used in a SQL query.
+   * Escapes a value to be injected into a query.
    * 
-   * @param mixed $value Value to escape; booleans are returned as 1 or 0, NULL
-   * values are returned NULL; everything else is escaped using
-   * mysql_real_escape_string()
+   * @param mixed $value Value to escape.
    * @param boolean $quote If TRUE, and if $value is a string, the escaped
    * value will be encapsulated in single quotes.
-   * @return string
+   * 
+   * @return string The escaped (and optionally quoted) value.
    **/
   public function escape($value, $quote = TRUE) {
+    // Connect if not already connected.
     if ($this->db === NULL) {
       $this->connect();
     }
+    // For arrays, recursively escape and join in comma-separated list.
+    if (is_array($value)) {
+      return '(' . join(', ', array_map(array($this, 'escape'), $value, array(TRUE))) . ')';
+    }
+    // Booleans get converted to 1 or 0.
     if (is_bool($value)) {
-      $value = $value ? 1 : 0;
+      return $value ? 1 : 0;
     }
-    else if ($value === NULL) {
-      $value = 'NULL';
+    // Numeric values remain as-is.
+    if (is_numeric($value)) {
+      return $value;
     }
-    else if (!is_numeric($value) and !is_array($value)) {
-      $value = mysql_real_escape_string($value, $this->db);
-      if ($quote) {
-        $value = "'". $value ."'";
-      }
+    // Null values are converted to NULL string.
+    if (is_null($value)) {
+      return 'NULL';
+    }
+    // String values are escaped, and optionally wrapped in quotes.
+    $value = mysql_real_escape_string($value, $this->db);
+    if ($quote) {
+      $value = "'" . $value . "'";
     }
     return $value;
   }
