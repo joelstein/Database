@@ -249,31 +249,6 @@ class Database {
   }
 
   /**
-   * Caches a query's result set.
-   * 
-   * @param string $method Which 'get' method to use.
-   * @param string $sql SQL query
-   * @param string|array|boolean $vars Values to quote and substitute into SQL
-   * @param string|NULL $filename Name of cache file. If left NULL, will be a
-   * hash of the sql.
-   * @param int|string|FALSE How long (if at all) until the cached file
-   * expires.
-   */
-  public function cache($method, $sql, $vars = FALSE, $filename = NULL, $expires = FALSE) {
-    if ($vars !== FALSE) {
-      $sql = $this->prepare($sql, $vars);
-    }
-    if ($filename === NULL) {
-      $filename = 'sql_'. md5($sql);
-    }
-    if (($data = cache($filename, NULL, $expires, TRUE)) === FALSE) {
-      $data = $this->$method($sql);
-      cache($filename, $data, $expires, TRUE);
-    }
-    return $data;
-  }
-
-  /**
    * Returns $field's enum options into an array.
    * 
    * @param string $table
@@ -304,10 +279,6 @@ class Database {
     return $rows;
   }
 
-  public function cacheGetAll($sql, $vars = FALSE, $filename = NULL, $expires = FALSE) {
-    return $this->cache('getAll', $sql, $vars, $filename, $expires);
-  }
-
   /**
    * Gets first row of query results.
    * 
@@ -327,10 +298,6 @@ class Database {
     }
     $result =& $this->query($sql);
     return mysql_fetch_array($result, MYSQL_ASSOC);
-  }
-
-  public function cacheGetRow($sql, $vars = FALSE, $filename = NULL, $expires = FALSE) {
-    return $this->cache('getRow', $sql, $vars, $filename, $expires);
   }
 
   /**
@@ -354,10 +321,6 @@ class Database {
     return $row[0];
   }
 
-  public function cacheGetOne($sql, $vars = FALSE, $filename = NULL, $expires = FALSE) {
-    return $this->cache('getOne', $sql, $vars, $filename, $expires);
-  }
-
   /**
    * Gets first column of all query results.
    * 
@@ -375,10 +338,6 @@ class Database {
       $rows[] = $row[0];
     }
     return $rows;
-  }
-
-  public function cacheGetCol($sql, $vars = FALSE, $filename = NULL, $expires = FALSE) {
-    return $this->cache('getCol', $sql, $vars, $filename, $expires);
   }
 
   /**
@@ -419,10 +378,6 @@ class Database {
       }
     }
     return $list;
-  }
-
-  public function cacheGetList($sql, $vars = FALSE, $filename = NULL, $expires = FALSE) {
-    return $this->cache('getList', $sql, $vars, $filename, $expires);
   }
 
 }
