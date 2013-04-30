@@ -106,12 +106,16 @@ class Database {
    * @return string Query with injected replacements.
    **/
   public function replace($query, $vars = array()) {
+    // Skip if no vars were sent.
+    if (empty($vars)) {
+      return $query;
+    }
     // Named substitutions.
     if (strpos($query, ':')) {
       $query = strtr($query, array_map(array($this, 'escape'), $vars));
     }
     // Sequential question-mark substitutions.
-    if (strpos($query, '?')) {
+    else if (strpos($query, '?')) {
       $queryParts = explode('?', $query);
       settype($vars, 'array');
       if (count($queryParts) != count($vars) + 1) {
