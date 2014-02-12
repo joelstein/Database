@@ -1,12 +1,12 @@
 <?php
-
+ 
 /**
  * Database class
  * 
  * A simple database wrapper, inspired by ADOdb.
  */
 class Database {
-
+ 
   /**
    * Database connection credentials.
    */
@@ -15,19 +15,19 @@ class Database {
   private $password;
   private $database;
   private $port;
-
+ 
   /**
    * MySQL link identifier of open database connection.
    * @var Resource.
    */
   private $db = NULL;
-
+ 
   /**
    * Log of all executed queries.
    * @var array
    */
   public $queries = array();
-
+ 
   /**
    * Class constructor, which stores connection credentials.
    * 
@@ -44,7 +44,7 @@ class Database {
     $this->database = $database;
     $this->port = $port;
   }
-
+ 
   /**
    * Connects to database.
    */
@@ -53,7 +53,7 @@ class Database {
     $this->db = mysql_connect($host, $this->username, $this->password, TRUE) or trigger_error("Could not connect to '{$host}'.", E_USER_ERROR);
     mysql_select_db($this->database, $this->db) or trigger_error('Could not select database: ' . mysql_error($this->db), E_USER_ERROR);
   }
-
+ 
   /**
    * Executes query.
    * 
@@ -76,7 +76,7 @@ class Database {
     $this->queries[] = $query;
     return $results;
   }
-
+ 
   /**
    * Safely injects query replacements.
    * 
@@ -130,40 +130,47 @@ class Database {
     }
     return $query;
   }
-
+ 
   /**
-   * Saves $data to a $table record, either inserting or updating.
+   * Saves $record to a $table record, either inserting or updating.
    * 
    * This function helps avoid writing long queries for a common task - saving
    * a record to the database. It follows several conventions:
    * 
-   * - If each $primaryKeys exists and is not empty in $data, and exists in
+   * - If each $primaryKeys exists and is not empty in $record, and exists in
    *   $table, then it updates the record. Otherwise, it inserts the record.
-   * - Only those $data keys which correspond to actual column names in $table
-   *   will be saved.
-   * - Any of $table's columns which are not in $data will remain untouched in
-   *   the database record.
+   * - Only those $record keys which correspond to actual column names in
+   *   $table will be saved.
+   * - Any of $table's columns which are not in $record will remain untouched
+   *   in the database record.
    * 
    * As a convenience, when a record is inserted, each of the table's primary
-   * keys will be populated into the corresponding $data[$primaryKey].
+   * keys will be populated into the corresponding $record->$primaryKey.
    * 
-   * @param string $table Table in which to save record.
-   * @param array &$data Associated array (by reference) in which the keys
-   * correspond to the $table's column names.
-   * @param string $where Conditions used when updating; defaults to
-   * "id = $data[$primaryKey]" (for each primary key).
-   * @param array $primaryKeys Defaults to primary keys in table.
+   * @param $table
+   *   A string containing the table in which to save the record.
+   * @param &$record
+   *   An object or array representing the record to write, passed in by
+   *   reference, in which the keys correspond to the $table's column names.
+   * @param $where
+   *   A string containing conditions used when updating; defaults to
+   *   "id = $data[$primaryKey]" (for each primary key).
+   * @param $primaryKeys
+   *   An array containing the primary keys. Defaults to primary keys in table.
    * 
    * @return boolean TRUE if save was successful, FALSE otherwise.
    **/
-  public function save($table, &$data, $where = NULL, $primaryKeys = array()) {
+  public function save($table, &$record, $where = NULL, $primaryKeys = array()) {
     static $columns = array();
-
+ 
+    // Convert to object.
+    $object = (object) $record;
+ 
     // Get column info about table.
     if (!isset($columns[$table])) {
       $columns[$table] = $this->getAll("SHOW COLUMNS FROM `{$table}`");
     }
-
+ 
     // Auto-determine primary keys (if not provided).
     if (empty($primaryKeys)) {
       foreach ($columns[$table] as $column) {
@@ -172,54 +179,54 @@ class Database {
         }
       }
     }
-
+ 
     // Determine if inserting or updating.
     $updating = TRUE;
     $conditions = array();
-
+ 
     // If any primary key is not set or is empty, then we're inserting.
     foreach ($primaryKeys as $primaryKey) {
-      if (!isset($data[$primaryKey]) || empty($data[$primaryKey])) {
+      if (!isset($object->$primaryKey) || empty($object->$primaryKey)) {
         $updating = FALSE;
         break;
       }
     }
-
+ 
     // If all primary keys have values, check if row exists.
     if ($updating) {
       foreach ($primaryKeys as $primaryKey) {
-        $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey]);
+        $conditions[] = "`{$primaryKey}` = " . $this->escape($object->$primaryKey);
       }
       if (!$this->getOne("SELECT COUNT(*) FROM `{$table}` WHERE " . implode(' AND ', $conditions))) {
         $updating = FALSE;
       }
     }
-
-    // Prepare data based on table's columns.
+ 
+    // Prepare object based on table's columns.
     $queryData = $queryFields = array();
     foreach ($columns[$table] as $column) {
       $field = $column['Field'];
-      // If column exists in data.
-      if (array_key_exists($field, $data)) {
+      // If column exists in object.
+      if (property_exists($object, $field)) {
         // Updating.
         if ($updating) {
           if (!in_array($field, $primaryKeys)) {
-            $queryData[] = "`{$field}` = " . $this->escape($data[$field]);
+            $queryData[] = "`{$field}` = " . $this->escape($object->$field);
           }
         }
         // Inserting.
         else {
           $queryFields[] = "`{$field}`";
-          $queryData[] = $this->escape($data[$field]);
+          $queryData[] = $this->escape($object->$field);
         }
       }
     }
-
+ 
     // Build query.
     if ($updating) {
       if ($where === NULL) {
         foreach ($primaryKeys as $primaryKey) {
-          $conditions[] = "`{$primaryKey}` = " . $this->escape($data[$primaryKey]);
+          $conditions[] = "`{$primaryKey}` = " . $this->escape($object->$primaryKey);
         }
         $where = implode(' AND ', $conditions);
       }
@@ -228,19 +235,24 @@ class Database {
     else {
       $query = sprintf("INSERT INTO `%s` (%s) VALUES (%s)", $table, implode(', ', $queryFields), implode(', ', $queryData));
     }
-
+ 
     // Execute query.
     $success = $this->query($query);
-
+ 
     // If successful, inserting a new record, there is only one primary key,
-    // and $data's $primaryKey is not set, then set $data's $primaryKey.
-    if ($success && !$updating && count($primaryKeys) == 1 && empty($data[$primaryKey])) {
-      $data[$primaryKey] = mysql_insert_id($this->db);
+    // and $object's $primaryKey is not set, then set $object's $primaryKey.
+    if ($success && !$updating && count($primaryKeys) == 1 && empty($object->$primaryKey)) {
+      $object->$primaryKey = mysql_insert_id($this->db);
     }
-
+ 
+    // If we began with an array, convert back.
+    if (is_array($record)) {
+      $record = (array) $object;
+    }
+ 
     return $success;
   }
-
+ 
   /**
    * Escapes a value to be injected into a query.
    * 
@@ -279,7 +291,7 @@ class Database {
     }
     return $value;
   }
-
+ 
   /**
    * Gets $column's enum options.
    * 
@@ -292,7 +304,7 @@ class Database {
     $info = $this->getRow("DESCRIBE `{$table}` `{$column}`");
     return explode(',', preg_replace('/enum\(([^\)]+)\)/', '$1', str_replace("'", '', $info['Type'])));
   }
-
+ 
   /**
    * Gets all query results.
    * 
@@ -309,7 +321,7 @@ class Database {
     }
     return $rows;
   }
-
+ 
   /**
    * Gets first row of query results.
    * 
@@ -328,7 +340,7 @@ class Database {
     $result =& $this->query($query, $vars);
     return mysql_fetch_array($result, MYSQL_ASSOC);
   }
-
+ 
   /**
    * Gets first column of first row of query results.
    * 
@@ -347,7 +359,7 @@ class Database {
     $row = mysql_fetch_array($result, MYSQL_NUM);
     return $row[0];
   }
-
+ 
   /**
    * Gets first column of all query results.
    * 
@@ -364,7 +376,7 @@ class Database {
     }
     return $rows;
   }
-
+ 
   /**
    * Generates a key => value list from query results.
    * 
@@ -401,5 +413,5 @@ class Database {
     }
     return $list;
   }
-
+ 
 }
