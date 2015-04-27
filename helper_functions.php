@@ -48,3 +48,15 @@ function db_enum($table, $column) {
   global $db;
   return $db->enum($table, $column);
 }
+
+function db_queries() {
+  global $db;
+  return array_map(function($query) {
+    return preg_replace("/\n +/", ' ', $query);
+  }, $db->queries);
+}
+
+function db_transaction($action) {
+  global $db;
+  return $db->transaction($action);
+}
