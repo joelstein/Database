@@ -29,6 +29,11 @@ class Database {
   public $queries = array();
 
   /**
+   * Tracks nested transaction handling.
+   */
+  private $transaction = FALSE;
+
+  /**
    * Class constructor, which stores connection credentials.
    *
    * @param string $host
@@ -411,6 +416,33 @@ class Database {
       }
     }
     return $list;
+  }
+
+  /**
+   * Tracks database transactions, gracefuly handling nested transactions.
+   *
+   * @param string $action The action to take, either "start", "rollback", or
+   * "commit".
+   */
+  public function transaction($action = 'start') {
+    switch ($action) {
+      case 'start':
+        if (!$this->transaction) {
+          $this->query('START TRANSACTION');
+          $this->transaction = TRUE;
+        }
+        return;
+
+      case 'rollback':
+        $this->query("ROLLBACK");
+        $this->transaction = FALSE;
+        return;
+
+      case 'commit':
+        $this->query("COMMIT");
+        $this->transaction = FALSE;
+        return;
+    }
   }
 
 }
